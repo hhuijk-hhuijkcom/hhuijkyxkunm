@@ -12,30 +12,34 @@ const OUTPUT_FOLDER = "./lua";
 const BATCH_LIMIT = 1000;
 const MAX_RETRY_TIMES = 3;
 const WEBHOOK = process.env.WECOM_WEBHOOK || "";
-// 调试用：填入需要测试的游戏主ID
 const TEST_APPID = 668580;
 // ======================================================
 
-// 创建lua输出目录
+// Steam账号从环境变量读取（绝对不要写死！）
+const steamLoginInfo = {
+    accountName: process.env.STEAM_ACCOUNT,
+    password: process.env.STEAM_PASSWORD
+};
+// 如果存在令牌则加入
+if(process.env.STEAM_GUARD && process.env.STEAM_GUARD.trim() !== ""){
+    steamLoginInfo.steamGuardCode = process.env.STEAM_GUARD.trim();
+}
+
 if (!fs.existsSync(OUTPUT_FOLDER)) fs.mkdirSync(OUTPUT_FOLDER, { recursive: true });
 
-// 加载token映射
 const tokenDict = JSON.parse(fs.readFileSync(PATH_TOKEN_JSON, "utf8"));
-// 加载全部appid列表
 const allIdList = fs.readFileSync(PATH_APPIDS_TXT, "utf8")
     .split("\n")
     .map(item => item.trim())
     .filter(item => /^\d+$/.test(item))
     .map(Number);
 
-// 读取断点
 let startIndex = 0;
 if (fs.existsSync(PATH_PROGRESS)) {
     const content = fs.readFileSync(PATH_PROGRESS, "utf8").trim();
     if (/^\d+$/.test(content)) startIndex = parseInt(content);
 }
 
-// 读取失败清单
 let failedIds = [];
 if (fs.existsSync(PATH_FAILED)) {
     failedIds = fs.readFileSync(PATH_FAILED, "utf8")
@@ -45,7 +49,6 @@ if (fs.existsSync(PATH_FAILED)) {
         .map(Number);
 }
 
-// 企业微信推送
 function sendMsg(text) {
     if (!WEBHOOK) return Promise.resolve();
     return new Promise(resolve => {
@@ -57,19 +60,16 @@ function sendMsg(text) {
     });
 }
 
-// 保存失败清单
 function saveFailedList() {
     fs.writeFileSync(PATH_FAILED, [...new Set(failedIds)].join("\n"), "utf8");
 }
 
-// 移除失败id（成功生成之后）
 function removeFailedId(appid) {
     failedIds = failedIds.filter(v => v !== appid);
     saveFailedList();
     console.log(`✅【${appid}】生成成功，从失败列表移除`);
 }
 
-// 单个app处理核心函数
 async function handleSingleApp(mainAppId) {
     let tryCount = 0;
     let ok = false;
@@ -78,7 +78,8 @@ async function handleSingleApp(mainAppId) {
         console.log(`\n[${tryCount}/${MAX_RETRY_TIMES}] 请求主AppID: ${mainAppId}`);
         try {
             const steam = new SteamUser();
-            steam.logOn({ anonymous: true });
+            // 使用账号登录，不再匿名
+            steam.logOn(steamLoginInfo);
             await new Promise((resolve, reject) => {
                 steam.on("loggedOn", resolve);
                 steam.on("error", reject);
@@ -90,16 +91,19 @@ async function handleSingleApp(mainAppId) {
 
             const appInfo = productData[mainAppId];
             const depotIdArr = Object.keys(appInfo.depots || {}).map(Number);
-            // DLC = 总列表排除主appid + 排除所有depot
-            const dlcIdArr = allIdList.filter(id => id !== mainAppId && !depotIdArr.includes(id));
 
-            // =========调试日志：打印分类结果=========
+            let dlcIdArr = [];
+            if(depotIdArr.length === 0){
+                console.warn(`⚠️【警告】AppID ${mainAppId} 获取Depot为空！本次不自动筛选DLC`);
+                dlcIdArr = [];
+            }else{
+                dlcIdArr = allIdList.filter(id => id !== mainAppId && !depotIdArr.includes(id));
+            }
+
             console.log("【调试信息】Depot清单：", depotIdArr);
             console.log("【调试信息】筛选出DLC清单：", dlcIdArr);
-            // =======================================
 
             const outputLines = [];
-            // 主游戏
             outputLines.push(`--主游戏APPID: ${mainAppId}`);
             const mainToken = tokenDict[String(mainAppId)];
             if (mainToken) {
@@ -107,7 +111,6 @@ async function handleSingleApp(mainAppId) {
             }
             outputLines.push("");
 
-            // Depot区块（只有存在token才输出）
             outputLines.push("--depotsID");
             for (const depId of depotIdArr) {
                 const depToken = tokenDict[String(depId)];
@@ -117,13 +120,11 @@ async function handleSingleApp(mainAppId) {
             }
             outputLines.push("");
 
-            // DLC区块：全部直接输出addappid(id)，无需token
             outputLines.push("--无仓库DLC");
             for (const dlcId of dlcIdArr) {
                 outputLines.push(`addappid(${dlcId})`);
             }
 
-            // 写入文件 lua/主ID.lua
             const targetPath = path.join(OUTPUT_FOLDER, `${mainAppId}.lua`);
             fs.writeFileSync(targetPath, outputLines.join("\n"), "utf8");
             console.log(`✅ 文件输出完成：${targetPath}`);
@@ -143,42 +144,18 @@ async function handleSingleApp(mainAppId) {
     }
 }
 
-// 主执行入口
 (async function main() {
+    // 校验是否成功读取账号信息
+    if(!steamLoginInfo.accountName || !steamLoginInfo.password){
+        console.error("❌ 错误：未读取到STEAM_ACCOUNT/STEAM_PASSWORD环境变量，请检查仓库Secrets配置！");
+        return;
+    }
     console.log(`📌 当前断点索引: ${startIndex}`);
     console.log(`⚠️ 待重试失败ID数量: ${failedIds.length}`);
 
-    // =====================【调试开关】=====================
+    // 调试模式
     console.log(`🧪【调试模式启动】测试AppID = ${TEST_APPID}`);
     await handleSingleApp(TEST_APPID);
     console.log(`🧪【调试模式结束】测试完成，直接终止程序，不运行批量任务`);
     return;
-    // =====================================================
-
-    // 第一阶段：优先重试失败列表
-    if (failedIds.length > 0) {
-        console.log("\n============== 开始重试失败ID ==============");
-        const copyFailed = [...failedIds];
-        for (const appid of copyFailed) {
-            await handleSingleApp(appid);
-        }
-        console.log("============== 失败ID重试结束 ==============\n");
-    }
-
-    // 第二阶段：正常批量任务
-    const endIdx = Math.min(startIndex + BATCH_LIMIT, allIdList.length);
-    const taskSlice = allIdList.slice(startIndex, endIdx);
-    console.log(`📦 本轮正常任务数量：${taskSlice.length}，起始索引 ${startIndex} → ${endIdx}`);
-
-    for (let i = 0; i < taskSlice.length; i++) {
-        const appId = taskSlice[i];
-        const globalIndex = startIndex + i;
-        console.log(`\n【全局索引 ${globalIndex}/${allIdList.length - 1}】处理AppID:${appId}`);
-        await handleSingleApp(appId);
-        // 更新断点
-        fs.writeFileSync(PATH_PROGRESS, String(globalIndex + 1), "utf8");
-    }
-
-    await sendMsg(`🤖本轮任务执行完毕！起始索引${startIndex}，结束索引${endIdx}`);
-    console.log("\n🏁本轮全部任务执行结束！");
 })();
