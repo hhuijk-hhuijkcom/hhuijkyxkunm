@@ -1,0 +1,37 @@
+name: Steam Lua生成机器人
+run-name: Lua批量生成任务
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取仓库完整代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装依赖
+        run: npm install steam-user@5.3.0
+
+      - name: 执行批量生成脚本
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: "0"
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+        run: node generate.js
+
+      - name: 提交变更文件
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖机器人执行完成，更新lua文件与任务日志"
+          branch: main
+          file_patterns: |
+            lua/**/*.lua
+            progress.txt
+            failed_ids.txt
