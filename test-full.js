@@ -7,7 +7,6 @@ const https = require("https");
 const PATH_APPIDS_TXT = "./appids.txt";
 const PATH_TOKEN_JSON = "./appaccesstokens.json";
 const OUTPUT_FOLDER = "./lua";
-// 填入你想要测试的游戏主ID
 const TEST_MAIN_APPID = 668580;
 const MAX_RETRY = 3;
 const WECOM_WEBHOOK = process.env.WECOM_WEBHOOK || "";
@@ -56,21 +55,29 @@ async function runTask(appId) {
 
             const appInfo = info[appId];
             const depotIds = Object.keys(appInfo.depots || {}).map(Number);
+            // DLC = 总列表排除主程序 + 排除所有depot
             const dlcList = allAppids.filter(id => id !== appId && !depotIds.includes(id));
 
             const lines = [];
+            // ========= 主游戏 =========
             lines.push(`--主游戏APPID: ${appId}`);
             const mainToken = tokenMap[String(appId)];
             if(mainToken){
                 lines.push(`addappid(${appId},0,"${mainToken}")  -- 主游戏`);
             }
             lines.push("");
+
+            // ========= Depot（必须有token才输出） =========
             lines.push("--depotsID");
             for(const depId of depotIds){
                 const dt = tokenMap[String(depId)];
-                if(dt) lines.push(`addappid(${depId},0,"${dt}")`);
+                if(dt) {
+                    lines.push(`addappid(${depId},0,"${dt}")`);
+                }
             }
             lines.push("");
+
+            // ========= DLC【不需要token，全部直接输出】 =========
             lines.push("--无仓库DLC");
             for(const d of dlcList){
                 lines.push(`addappid(${d})`);
@@ -91,5 +98,4 @@ async function runTask(appId) {
     }
 }
 
-// 启动执行
 runTask(TEST_MAIN_APPID);
