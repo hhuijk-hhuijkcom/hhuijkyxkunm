@@ -12,6 +12,8 @@ const OUTPUT_FOLDER = "./lua";
 const BATCH_LIMIT = 1000;
 const MAX_RETRY_TIMES = 3;
 const WEBHOOK = process.env.WECOM_WEBHOOK || "";
+// 调试用：填入需要测试的游戏主ID
+const TEST_APPID = 668580;
 // ======================================================
 
 // 创建lua输出目录
@@ -91,6 +93,11 @@ async function handleSingleApp(mainAppId) {
             // DLC = 总列表排除主appid + 排除所有depot
             const dlcIdArr = allIdList.filter(id => id !== mainAppId && !depotIdArr.includes(id));
 
+            // =========调试日志：打印分类结果=========
+            console.log("【调试信息】Depot清单：", depotIdArr);
+            console.log("【调试信息】筛选出DLC清单：", dlcIdArr);
+            // =======================================
+
             const outputLines = [];
             // 主游戏
             outputLines.push(`--主游戏APPID: ${mainAppId}`);
@@ -140,6 +147,13 @@ async function handleSingleApp(mainAppId) {
 (async function main() {
     console.log(`📌 当前断点索引: ${startIndex}`);
     console.log(`⚠️ 待重试失败ID数量: ${failedIds.length}`);
+
+    // =====================【调试开关】=====================
+    console.log(`🧪【调试模式启动】测试AppID = ${TEST_APPID}`);
+    await handleSingleApp(TEST_APPID);
+    console.log(`🧪【调试模式结束】测试完成，直接终止程序，不运行批量任务`);
+    return;
+    // =====================================================
 
     // 第一阶段：优先重试失败列表
     if (failedIds.length > 0) {
