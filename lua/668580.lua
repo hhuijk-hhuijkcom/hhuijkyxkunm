@@ -1,9 +1,0 @@
---主游戏APPID: 668580
-addappid(668580,0,"5a1ed8d8d2a8110fde9be6e0ec543d96db83954f381710c70e330b5c010841e7")  -- 主游戏
-
---depotsID
-addappid(668581,0,"b331448756a6614f7b9b52f56b71e329928370afb8034b8474e264ace0048928")
-
---无仓库DLC
-addappid(2214824)
-addappid(2214823)
