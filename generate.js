@@ -174,10 +174,13 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
     lua += `addappid(${depotId},0,"${depotKeys[depotId]}")\n`;
   });
   const dlcWithAllKeys = [];
+  const dlcWithoutAllKeys = [];
   for (const [dlcId, dlcDepots] of Object.entries(dlcDepotMap)) {
     const dlcDepotNum = dlcDepots.map(Number);
     if (dlcDepotNum.length > 0 && dlcDepotNum.every(d => depotKeys[d])) {
       dlcWithAllKeys.push({ id: Number(dlcId), depots: dlcDepotNum });
+    } else {
+      dlcWithoutAllKeys.push({ id: Number(dlcId), depots: dlcDepotNum });
     }
   }
   if (dlcWithAllKeys.length > 0) {
@@ -193,11 +196,25 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
       lua += `addappid(${dlc.id})${comment}\n`;
     });
   }
+  // 收集所有无密钥的 depots（主游戏 + DLC 的无密钥 depots）
   const depotsWithoutKey = depotIds.filter(did => !depotKeys[did]);
-  if (depotsWithoutKey.length > 0) {
+  dlcWithoutAllKeys.forEach(dlc => {
+    dlc.depots.forEach(did => {
+      if (!depotKeys[did] && !depotsWithoutKey.includes(did)) {
+        depotsWithoutKey.push(did);
+      }
+    });
+  });
+  if (depotsWithoutKey.length > 0 || dlcWithoutAllKeys.length > 0) {
     lua += '\n--无仓库DLC\n';
     depotsWithoutKey.forEach(depotId => {
       lua += `addappid(${depotId})\n`;
+    });
+    // 输出检测到但没有完整密钥的 DLC appid
+    dlcWithoutAllKeys.forEach(dlc => {
+      if (!depotsWithoutKey.includes(dlc.id)) {
+        lua += `addappid(${dlc.id}) -- DLC\n`;
+      }
     });
   }
   const tokenIds = [];
