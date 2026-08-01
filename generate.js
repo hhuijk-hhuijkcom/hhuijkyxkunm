@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const SteamUser = require('steam-user');
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -14,7 +15,7 @@ const FAILED_FILE = path.join(__dirname, 'failed_ids.txt');
 const STATS_FILE = path.join(__dirname, 'stats.json');
 
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '50');
-const FORCE_REGEN = process.env.FORCE_REGEN === 'true';
+const FORCE_REGEN = process.env.FORCE_REGEN === 'false' ? false : true;
 
 // 读取数据文件
 const appidsText = fs.readFileSync(APPIDS_FILE, 'utf-8');
@@ -25,7 +26,6 @@ const accessTokens = fs.existsSync(ACCESS_TOKENS_FILE)
   ? JSON.parse(fs.readFileSync(ACCESS_TOKENS_FILE, 'utf-8'))
   : {};
 
-// 确保lua目录存在
 if (!fs.existsSync(LUA_DIR)) fs.mkdirSync(LUA_DIR, { recursive: true });
 
 // 读取进度
@@ -38,37 +38,92 @@ if (startIndex === 0 && fs.existsSync(PROGRESS_FILE)) {
   }
 }
 
-// 读取失败记录
 let failedIds = [];
 if (fs.existsSync(FAILED_FILE)) {
   failedIds = fs.readFileSync(FAILED_FILE, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean);
 }
 
-// 统计
 let stats = {
-  total: 0,
-  success: 0,
-  skipped: 0,
-  failed: 0,
-  noKey: 0,
-  freeGame: 0,
+  total: 0, success: 0, skipped: 0, failed: 0, noKey: 0, freeGame: 0,
   startTime: new Date().toISOString(),
 };
 
-// HTTP 请求函数
+// Steam 客户端（匿名登录）
+const steamClient = new SteamUser({ enablePicsCache: false, autoRelogin: false });
+let steamReady = false;
+let steamLogonPromise = null;
+
+function loginSteam() {
+  if (steamReady) return Promise.resolve();
+  if (steamLogonPromise) return steamLogonPromise;
+
+  steamLogonPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Steam 登录超时'));
+    }, 20000);
+
+    steamClient.once('loggedOn', () => {
+      clearTimeout(timeout);
+      steamReady = true;
+      console.log('✅ Steam 匿名登录成功');
+      resolve();
+    });
+
+    steamClient.once('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    steamClient.logOn({ anonymous: true });
+  });
+
+  return steamLogonPromise;
+}
+
+// 通过 steam-user 获取 depot IDs
+function getDepotIdsFromSteam(appId) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('获取 depot 超时'));
+    }, 15000);
+
+    steamClient.getProductInfo([appId], [], false, (err, apps) => {
+      clearTimeout(timeout);
+      if (err) {
+        reject(err);
+        return;
+      }
+      const depots = apps && apps[appId] && apps[appId].appinfo && apps[appId].appinfo.depots;
+      if (depots) {
+        const depotIds = Object.keys(depots).filter(k => !isNaN(k)).map(Number).sort((a, b) => a - b);
+        resolve(depotIds);
+      } else {
+        resolve([]);
+      }
+    });
+  });
+}
+
+// 获取 DLC 的 depot IDs
+async function getDlcDepotIds(dlcId) {
+  try {
+    return await getDepotIdsFromSteam(dlcId);
+  } catch (e) {
+    return [];
+  }
+}
+
+// HTTP 请求
 function httpRequest(hostname, urlPath, timeout = 10000) {
   return new Promise((resolve, reject) => {
     const req = https.request({
-      hostname,
-      path: urlPath,
-      method: 'GET',
+      hostname, path: urlPath, method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Cookie': 'wants_mature_content=1; lastagecheckage=1-0-1990; birthtime=0;',
       },
       rejectUnauthorized: false,
     }, (res) => {
-      // 跟随重定向
       if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
         const location = new URL(res.headers.location, `https://${hostname}`);
         httpRequest(location.hostname, location.pathname + location.search, timeout)
@@ -77,9 +132,7 @@ function httpRequest(hostname, urlPath, timeout = 10000) {
       }
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf-8'));
-      });
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     });
     req.setTimeout(timeout, () => req.destroy(new Error('请求超时')));
     req.on('error', reject);
@@ -87,8 +140,8 @@ function httpRequest(hostname, urlPath, timeout = 10000) {
   });
 }
 
-// 从 Steam API 获取应用详情
-async function getAppDetails(appId) {
+// 从 Steam Store API 获取 DLC 列表和是否免费
+async function getAppInfo(appId) {
   try {
     const data = await httpRequest(
       'store.steampowered.com',
@@ -105,45 +158,10 @@ async function getAppDetails(appId) {
   return null;
 }
 
-// 获取 depot IDs
-async function getDepotIds(appId, appData) {
-  if (appData && appData.depots) {
-    return Object.keys(appData.depots).filter(k => !isNaN(k)).map(Number).sort((a, b) => a - b);
-  }
-  return [];
-}
-
-// 获取 DLC 列表
-function getDlcList(appData) {
-  if (appData && appData.dlc && Array.isArray(appData.dlc)) {
-    return appData.dlc;
-  }
-  return [];
-}
-
-// 检查是否免费
-function isFree(appData) {
-  if (!appData) return false;
-  const price = appData.price_overview;
-  return !price || price.final === 0;
-}
-
-// 获取 DLC 的 depot IDs
-async function getDlcDepotIds(dlcId) {
-  try {
-    const data = await getAppDetails(dlcId);
-    if (data && data.depots) {
-      return Object.keys(data.depots).filter(k => !isNaN(k)).map(Number).sort((a, b) => a - b);
-    }
-  } catch (e) {}
-  return [];
-}
-
 // 生成 Lua 内容（与程序格式完全一致）
 function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
   const appIdNum = parseInt(appId);
   const depotsWithKey = depotIds.filter(did => depotKeys[did]);
-  const hasMainKey = !!depotKeys[appIdNum];
 
   let lua = `--H-huijk\n`;
   lua += `--主游戏APPID: ${appId}\n`;
@@ -234,37 +252,21 @@ async function sendNotification(stats) {
   ].join('\n');
 
   try {
-    const data = JSON.stringify({
-      msgtype: 'markdown',
-      markdown: { content },
-    });
+    const data = JSON.stringify({ msgtype: 'markdown', markdown: { content } });
     const url = new URL(webhook);
     const req = https.request({
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-    }, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => console.log('通知已发送'));
-    });
+      hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, (res) => { let b=''; res.on('data',c=>b+=c); res.on('end',()=>console.log('通知已发送')); });
     req.on('error', (e) => console.log('通知发送失败:', e.message));
-    req.write(data);
-    req.end();
-  } catch (e) {
-    console.log('通知发送失败:', e.message);
-  }
+    req.write(data); req.end();
+  } catch (e) { console.log('通知发送失败:', e.message); }
 }
 
-// 主处理函数
+// 处理单个 AppID
 async function processAppId(appId) {
   const luaPath = path.join(LUA_DIR, `${appId}.lua`);
 
-  // 跳过已存在（非强制重新生成）
   if (!FORCE_REGEN && fs.existsSync(luaPath)) {
     stats.skipped++;
     return;
@@ -273,52 +275,50 @@ async function processAppId(appId) {
   const appIdNum = parseInt(appId);
   stats.total++;
 
-  // 获取应用详情
-  const appData = await getAppDetails(appId);
-  if (!appData) {
-    console.log(`❌ ${appId}: API无数据`);
-    stats.failed++;
-    failedIds.push(appId);
-    return;
+  // 1. 通过 Steam Store API 获取 DLC 列表和是否免费
+  const appData = await getAppInfo(appId);
+  const dlcList = (appData && appData.dlc && Array.isArray(appData.dlc)) ? appData.dlc : [];
+
+  // 2. 通过 steam-user 获取主游戏 depot IDs
+  let depotIds = [];
+  try {
+    depotIds = await getDepotIdsFromSteam(appIdNum);
+    console.log(`  depots: ${depotIds.join(', ') || '无'}`);
+  } catch (e) {
+    console.log(`  ⚠️ 获取 depot 失败: ${e.message}`);
   }
 
-  // 获取 depot IDs
-  const depotIds = await getDepotIds(appId, appData);
-  const dlcList = getDlcList(appData);
-
-  // 获取每个DLC的depot IDs
+  // 3. 获取每个 DLC 的 depot IDs
   const dlcDepotMap = {};
   for (const dlcId of dlcList) {
     dlcDepotMap[dlcId] = await getDlcDepotIds(dlcId);
-    await new Promise(r => setTimeout(r, 200)); // 避免请求过快
+    await new Promise(r => setTimeout(r, 300));
   }
 
-  // 检查密钥
+  // 4. 检查密钥
   const hasMainKey = !!depotKeys[appIdNum];
   const depotsWithKey = depotIds.filter(did => depotKeys[did]);
 
   if (!hasMainKey && depotsWithKey.length === 0) {
-    const free = isFree(appData);
+    const free = appData ? (!appData.price_overview || appData.price_overview.final === 0) : false;
     if (!free) {
-      console.log(`🔑 ${appId}: 付费游戏无密钥，跳过`);
+      console.log(`  🔑 付费游戏无密钥，跳过`);
       stats.noKey++;
       return;
     }
-    console.log(`🆓 ${appId}: 免费游戏无密钥，继续生成`);
+    console.log(`  🆓 免费游戏无密钥，继续生成`);
     stats.freeGame++;
   }
 
-  // 生成lua文件
+  // 5. 生成 lua 文件
   const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
   fs.writeFileSync(luaPath, luaContent);
-  console.log(`✅ ${appId}: 生成完成 (${depotIds.length} depots, ${dlcList.length} DLC)`);
+  console.log(`  ✅ 生成完成 (${depotIds.length} depots, ${dlcList.length} DLC)`);
   stats.success++;
 }
 
-// 延迟函数
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// 主函数
 async function main() {
   console.log('========================================');
   console.log('🤖 hhuijk Lua 批量生成脚本');
@@ -328,38 +328,40 @@ async function main() {
   console.log(`🔄 强制重新生成: ${FORCE_REGEN}`);
   console.log('========================================\n');
 
+  // 登录 Steam
+  console.log('🔐 正在登录 Steam...');
+  try {
+    await loginSteam();
+  } catch (e) {
+    console.error('❌ Steam 登录失败:', e.message);
+    console.log('⚠️ 将仅使用 Steam Store API（depots 可能为空）');
+  }
+
   const batch = allAppIds.slice(startIndex, startIndex + BATCH_SIZE);
-  const actualStart = startIndex;
 
   for (let i = 0; i < batch.length; i++) {
     const appId = batch[i];
-    const globalIndex = actualStart + i;
-    console.log(`[${globalIndex + 1}/${allAppIds.length}] 处理 AppID: ${appId}`);
+    const globalIndex = startIndex + i;
+    console.log(`[${globalIndex + 1}/${allAppIds.length}] AppID: ${appId}`);
 
     try {
       await processAppId(appId);
     } catch (e) {
-      console.log(`❌ ${appId}: ${e.message}`);
+      console.log(`  ❌ ${e.message}`);
       stats.failed++;
       failedIds.push(appId);
     }
 
-    // 保存进度
     fs.writeFileSync(PROGRESS_FILE, String(globalIndex + 1));
-
-    // 保存失败记录
     fs.writeFileSync(FAILED_FILE, failedIds.join('\n'));
-
-    // 请求间隔
     await sleep(500);
   }
 
-  // 保存统计
   stats.endTime = new Date().toISOString();
   fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2));
 
   console.log('\n========================================');
-  console.log('📊 统计结果:');
+  console.log('📊 统计:');
   console.log(`  总计: ${stats.total}`);
   console.log(`  成功: ${stats.success}`);
   console.log(`  跳过: ${stats.skipped}`);
@@ -368,21 +370,21 @@ async function main() {
   console.log(`  免费游戏: ${stats.freeGame}`);
   console.log('========================================\n');
 
-  // 发送通知
   await sendNotification(stats);
 
-  // 如果还有剩余，提示继续
   if (startIndex + BATCH_SIZE < allAppIds.length) {
-    console.log(`\n⏭️ 还有 ${allAppIds.length - startIndex - BATCH_SIZE} 个待处理`);
-    console.log(`进度已保存，下次运行将自动从 ${startIndex + BATCH_SIZE} 继续`);
+    console.log(`⏭️ 还有 ${allAppIds.length - startIndex - BATCH_SIZE} 个待处理`);
   } else {
-    console.log('\n🎉 全部处理完成！');
-    // 重置进度
+    console.log('🎉 全部处理完成！');
     fs.writeFileSync(PROGRESS_FILE, '0');
   }
+
+  steamClient.logOff();
+  process.exit(0);
 }
 
 main().catch(e => {
   console.error('脚本执行失败:', e);
+  try { steamClient.logOff(); } catch(_) {}
   process.exit(1);
 });
