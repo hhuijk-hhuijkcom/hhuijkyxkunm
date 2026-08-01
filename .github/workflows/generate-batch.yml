@@ -1,0 +1,46 @@
+name: Generate Batch Lua Files
+run-name: 批量生成 ${{ github.event.inputs.app_ids }} 的 Lua 文件
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_ids:
+        description: "AppID 列表（逗号或换行分隔）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取仓库完整代码
+        uses: actions/checkout@v4
+
+      - name: 配置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装依赖
+        run: |
+          if [ ! -f package.json ]; then npm init -y; fi
+          npm install steam-user
+
+      - name: 执行脚本
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: "0"
+          BATCH_APPIDS: ${{ inputs.app_ids }}
+        run: node generate.js
+
+      - name: 提交文件
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖批量生成 lua: AppID"
+          branch: main
+          file_patterns: |
+            lua/*.lua
+            paid_no_key_ids.txt
+
