@@ -1,10 +1,10 @@
 {
-  "total": 50,
-  "success": 30,
-  "skipped": 0,
-  "failed": 2,
-  "noKey": 18,
-  "freeGame": 7,
-  "startTime": "2026-08-01T06:36:25.333Z",
-  "endTime": "2026-08-01T06:37:00.761Z"
+  "total": 199,
+  "success": 43,
+  "skipped": 1,
+  "failed": 81,
+  "noKey": 75,
+  "freeGame": 27,
+  "startTime": "2026-08-01T06:37:42.460Z",
+  "endTime": "2026-08-01T06:40:05.014Z"
 }
