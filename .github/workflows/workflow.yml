@@ -1,19 +1,27 @@
-
 name: Lua批量生成
-run-name: 🤖 Lua生成任务
+run-name: 🤖 Lua生成任务 - ${{ github.event.inputs.mode || 'all' }}
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: '运行模式'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - paid_no_key
+          - failed
       batch_size:
         description: '每批处理数量（默认50）'
         required: false
         default: '50'
       start_from:
-        description: '从第几个开始（默认0，自动从progress.txt读取）'
+        description: '从第几个开始（默认0，自动读进度）'
         required: false
         default: '0'
       force_regen:
-        description: '强制重新生成所有（true/false）'
+        description: '强制重新生成（true/false，仅all模式生效）'
         required: false
         default: 'false'
 
@@ -40,10 +48,18 @@ jobs:
           ls node_modules/steam-user/package.json
           echo "✅ steam-user 安装成功"
 
+      - name: 显示运行模式
+        run: |
+          echo "========================================" 
+          echo "运行模式: ${{ github.event.inputs.mode || 'all' }}"
+          echo "批次大小: ${{ github.event.inputs.batch_size || '50' }}"
+          echo "========================================"
+
       - name: 执行生成脚本
         env:
           NODE_TLS_REJECT_UNAUTHORIZED: "0"
           WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          MODE: ${{ github.event.inputs.mode || 'all' }}
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '50' }}
           START_FROM: ${{ github.event.inputs.start_from || '0' }}
           FORCE_REGEN: ${{ github.event.inputs.force_regen || 'false' }}
@@ -52,10 +68,13 @@ jobs:
       - name: 提交文件
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🤖批量生成lua文件"
+          commit_message: "🤖 Lua生成[${{ github.event.inputs.mode || 'all' }}]模式"
           branch: main
           file_patterns: |
             lua/**/*.lua
-            progress.txt
+            progress_all.txt
+            progress_paid_no_key.txt
+            progress_failed.txt
+            paid_no_key_ids.txt
             failed_ids.txt
             stats.json
