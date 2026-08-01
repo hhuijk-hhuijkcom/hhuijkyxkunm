@@ -5,6 +5,9 @@
   "failed": 0,
   "noKey": 0,
   "freeGame": 0,
-  "startTime": "2026-08-01T07:21:28.739Z",
-  "endTime": "2026-08-01T07:22:23.735Z"
+  "gotKeyNow": 0,
+  "stillNoKey": 0,
+  "mode": "all",
+  "startTime": "2026-08-01T07:40:06.534Z",
+  "endTime": "2026-08-01T07:41:01.274Z"
 }
