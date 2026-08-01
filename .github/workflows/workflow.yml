@@ -33,6 +33,13 @@ jobs:
         with:
           node-version: "20"
 
+      - name: 安装steam-user
+        run: |
+          npm init -y
+          npm install steam-user --no-audit --no-fund
+          ls node_modules/steam-user/package.json
+          echo "✅ steam-user 安装成功"
+
       - name: 执行生成脚本
         env:
           NODE_TLS_REJECT_UNAUTHORIZED: "0"
