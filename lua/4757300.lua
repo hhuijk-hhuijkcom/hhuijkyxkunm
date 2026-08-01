@@ -1,8 +1,0 @@
---H-huijk
---主游戏APPID: 4757300
-addappid(4757300) -- 主游戏
-
---depotsID
-addappid(228989,0,"ad69276eb476cf06c40312df7376d63deac0c838b9a2767005be8bb306ffb853")
-addappid(228990,0,"44d8c45ce229a11c4f231a3d2a350eaf80b0d69a8af938ec7ccca720f694b0e8")
-addappid(4757301,0,"0c7698e8e9cf18ef398d0f8243f1ae5029d0c473f46ec3febac2bf82118118e0")

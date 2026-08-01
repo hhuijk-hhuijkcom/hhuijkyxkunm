@@ -1,6 +1,0 @@
---H-huijk
---主游戏APPID: 3436350
-addappid(3436350) -- 主游戏
-
---depotsID
-addappid(3436351,0,"f49c0a2507ef9d1a2eee120fd4c36ed1723d7e2abdc4122a99cc6b576c93a44d")

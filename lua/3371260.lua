@@ -1,7 +1,0 @@
---H-huijk
---主游戏APPID: 3371260
-addappid(3371260) -- 主游戏
-
---depotsID
-addappid(3371261,0,"da7e7fe5ea749c63fa506bc3dfb78157189b8022b062deda23a7c4872d14aa05")
-addappid(3371262,0,"2872c8932cb74fb8174530fd68210064b7d12fb7ac8d5f99d1f95af720ed0b91")
