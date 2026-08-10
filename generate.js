@@ -316,23 +316,19 @@ async function processAppId(appId) {
   const hasAnyKey = hasMainKey || depotsWithKey.length > 0;
   const free = appData ? (!appData.price_overview || appData.price_overview.final === 0) : false;
   if (IS_BATCH_OR_SINGLE) {
-    // 单个/批量模式（由程序内一键多入库触发）：付费无密钥也记录到列表，但不跳过生成（无密钥都生成）
+  if (IS_BATCH_OR_SINGLE) {
+    // 单个/批量模式（由程序内一键多入库触发）：付费无密钥记录到列表，不生成 lua
     if (!hasAnyKey && !free) {
-      console.log(`  🔑 付费游戏无密钥，记录到付费无密钥列表`);
-      stats.noKey++;
-      if (!paidNoKeyIds.includes(appId)) {
-        paidNoKeyIds.push(appId);
-      }
-      // 仍然生成 lua（无密钥部分）
-      const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
-      fs.writeFileSync(luaPath, luaContent);
-      console.log(`  ✅ 生成完成 (${depotIds.length} depots, ${dlcList.length} DLC) - 无主密钥`);
-      stats.success++;
-      return;
+        console.log(`  🔑 付费游戏无密钥，记录到付费无密钥列表，跳过生成`);
+        stats.noKey++;
+        if (!paidNoKeyIds.includes(appId)) {
+            paidNoKeyIds.push(appId);
+        }
+        return;
     }
     if (!hasAnyKey && free) {
-      console.log(`  🆓 免费游戏无密钥，继续生成`);
-      stats.freeGame++;
+        console.log(`  🆓 免费游戏无密钥，继续生成`);
+        stats.freeGame++;
     }
     // 生成 lua
     const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
@@ -341,10 +337,10 @@ async function processAppId(appId) {
     stats.success++;
     // 如果有密钥了，从付费无密钥列表移除
     if (hasAnyKey) {
-      paidNoKeyIds = paidNoKeyIds.filter(id => id !== appId);
+        paidNoKeyIds = paidNoKeyIds.filter(id => id !== appId);
     }
     return;
-  }
+}
   if (MODE === 'paid_no_key') {
     // 付费无密钥模式：只检查是否现在有密钥
     if (hasAnyKey) {
