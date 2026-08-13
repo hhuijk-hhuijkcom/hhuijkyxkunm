@@ -34,9 +34,11 @@ if (!fs.existsSync(LUA_DIR)) fs.mkdirSync(LUA_DIR, { recursive: true });
 let allAppIds = [];
 let currentListFile = '';
 if (SINGLE_APPID) {
+  // 单个 AppID 模式（由程序内 GitHub 生成触发）
   currentListFile = 'single';
   allAppIds = [String(SINGLE_APPID).trim()];
 } else if (BATCH_APPIDS) {
+  // 批量 AppID 模式（由程序内一键多入库触发）
   currentListFile = 'batch';
   allAppIds = String(BATCH_APPIDS)
     .split(/[,;\s\n\r]+/)
@@ -59,7 +61,7 @@ if (SINGLE_APPID) {
   allAppIds = fs.readFileSync(APPIDS_FILE, 'utf-8')
     .split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 }
-// 读取进度
+// 读取进度（单个 AppID 模式跳过进度恢复）
 let startIndex = parseInt(process.env.START_FROM || '0');
 const progressKey = `progress_${MODE}`;
 if (!IS_BATCH_OR_SINGLE && startIndex === 0 && fs.existsSync(path.join(__dirname, progressKey + '.txt'))) {
@@ -69,7 +71,7 @@ if (!IS_BATCH_OR_SINGLE && startIndex === 0 && fs.existsSync(path.join(__dirname
     console.log(`📋 从进度文件恢复，从第 ${startIndex} 个开始`);
   }
 }
-// 读取已有的付费无密钥列表
+// 读取已有的付费无密钥列表（避免重复添加）
 let paidNoKeyIds = [];
 if (fs.existsSync(PAID_NO_KEY_FILE)) {
   paidNoKeyIds = fs.readFileSync(PAID_NO_KEY_FILE, 'utf-8')
@@ -203,6 +205,7 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
       lua += `addappid(${dlc.id})${comment}\n`;
     });
   }
+  // 收集所有无密钥的 depots（主游戏 + DLC 的无密钥 depots）
   const depotsWithoutKey = depotIds.filter(did => !depotKeys[did]);
   dlcWithoutAllKeys.forEach(dlc => {
     dlc.depots.forEach(did => {
@@ -216,6 +219,7 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
     depotsWithoutKey.forEach(depotId => {
       lua += `addappid(${depotId})\n`;
     });
+    // 输出检测到但没有完整密钥的 DLC appid
     dlcWithoutAllKeys.forEach(dlc => {
       if (!depotsWithoutKey.includes(dlc.id)) {
         lua += `addappid(${dlc.id}) -- DLC\n`;
@@ -280,19 +284,23 @@ async function processAppId(appId) {
   const luaPath = path.join(LUA_DIR, `${appId}.lua`);
   const appIdNum = parseInt(appId);
   stats.total++;
+  // 单/批量模式：如果已存在且未强制重新生成，跳过
   if (IS_BATCH_OR_SINGLE && fs.existsSync(luaPath) && !FORCE_REGEN) {
     console.log(`  ⏭️ 已存在 lua 文件，跳过（如需重新生成请设置 FORCE_REGEN=true）`);
     stats.skipped++;
     return;
   }
+  // Steam Store API 获取 DLC 和价格
   const appData = await getAppInfo(appId);
   const dlcList = (appData && appData.dlc && Array.isArray(appData.dlc)) ? appData.dlc : [];
+  // steam-user 获取 depots
   let depotIds = [];
   try {
     depotIds = await getDepotIdsFromSteam(appIdNum);
   } catch (e) {
     console.log(`  ⚠️ 获取 depot 失败: ${e.message}`);
   }
+  // 获取每个 DLC 的 depots
   const dlcDepotMap = {};
   for (const dlcId of dlcList) {
     try {
@@ -314,6 +322,7 @@ async function processAppId(appId) {
     console.log(`  📅 游戏未发售（coming_soon），不视为免费游戏`);
   }
   if (IS_BATCH_OR_SINGLE) {
+    // 单个/批量模式（由程序内一键多入库触发）：付费无密钥记录到列表，不生成 lua
     if (!hasAnyKey && !free) {
       console.log(`  🔑 付费游戏无密钥，记录到付费无密钥列表，跳过生成`);
       stats.noKey++;
@@ -326,29 +335,36 @@ async function processAppId(appId) {
       console.log(`  🆓 免费游戏无密钥，继续生成`);
       stats.freeGame++;
     }
+    // 生成 lua
     const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
     fs.writeFileSync(luaPath, luaContent);
     console.log(`  ✅ 生成完成 (${depotIds.length} depots, ${dlcList.length} DLC)`);
     stats.success++;
+    // 如果有密钥了，从付费无密钥列表移除
     if (hasAnyKey) {
       paidNoKeyIds = paidNoKeyIds.filter(id => id !== appId);
     }
     return;
   }
   if (MODE === 'paid_no_key') {
+    // 付费无密钥模式：只检查是否现在有密钥
     if (hasAnyKey) {
+      // 有密钥了！生成 lua 并从列表中删除
       console.log(`  🔓 已获得密钥！开始生成`);
       const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
       fs.writeFileSync(luaPath, luaContent);
       console.log(`  ✅ 生成完成，从付费无密钥列表中移除`);
       stats.success++;
       stats.gotKeyNow++;
+      // 从 paidNoKeyIds 中移除
       paidNoKeyIds = paidNoKeyIds.filter(id => id !== appId);
     } else {
+      // 仍然没有密钥，保留在列表中
       if (!free) {
         console.log(`  ⏳ 仍然无密钥，保留在列表中`);
         stats.stillNoKey++;
       } else {
+        // 免费游戏不需要密钥，直接生成并移除
         console.log(`  🆓 免费游戏，生成 lua`);
         const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
         fs.writeFileSync(luaPath, luaContent);
@@ -361,8 +377,10 @@ async function processAppId(appId) {
   }
   // 正常模式 / 失败重试模式
   if (!hasAnyKey && !free) {
+    // 付费游戏无密钥
     console.log(`  🔑 付费游戏无密钥，跳过`);
     stats.noKey++;
+    // 添加到付费无密钥列表（避免重复）
     if (!paidNoKeyIds.includes(appId)) {
       paidNoKeyIds.push(appId);
     }
@@ -372,10 +390,12 @@ async function processAppId(appId) {
     console.log(`  🆓 免费游戏无密钥，继续生成`);
     stats.freeGame++;
   }
+  // 生成 lua
   const luaContent = generateLuaContent(appId, depotIds, dlcList, dlcDepotMap);
   fs.writeFileSync(luaPath, luaContent);
   console.log(`  ✅ 生成完成 (${depotIds.length} depots, ${dlcList.length} DLC)`);
   stats.success++;
+  // 成功后从失败列表中移除
   failedIds = failedIds.filter(id => id !== appId);
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -408,6 +428,7 @@ async function main() {
     console.error('❌ Steam 登录失败:', e.message);
     console.log('⚠️ 将仅使用 Steam Store API');
   }
+  // 单/批量模式：处理所有输入的 AppID（不限制数量）；其他模式：按批次处理
   const batch = IS_BATCH_OR_SINGLE ? allAppIds : allAppIds.slice(startIndex, startIndex + BATCH_SIZE);
   for (let i = 0; i < batch.length; i++) {
     const appId = batch[i];
@@ -418,14 +439,18 @@ async function main() {
     } catch (e) {
       console.log(`  ❌ ${e.message}`);
       stats.failed++;
+      // 正常模式下才记录失败，失败重试模式下不重复添加
       if (!IS_BATCH_OR_SINGLE && MODE !== 'failed' && !failedIds.includes(appId)) {
         failedIds.push(appId);
       }
     }
+    // 保存进度（单个模式跳过）
     if (!IS_BATCH_OR_SINGLE) {
       fs.writeFileSync(path.join(__dirname, progressKey + '.txt'), String(globalIndex + 1));
     }
+    // 保存付费无密钥列表
     fs.writeFileSync(PAID_NO_KEY_FILE, paidNoKeyIds.join('\n') + (paidNoKeyIds.length > 0 ? '\n' : ''));
+    // 保存失败列表（单个模式跳过）
     if (!IS_BATCH_OR_SINGLE) {
       fs.writeFileSync(FAILED_FILE, failedIds.join('\n') + (failedIds.length > 0 ? '\n' : ''));
     }
@@ -465,7 +490,5 @@ async function main() {
 main().catch(e => {
   console.error('脚本执行失败:', e);
   try { steamClient.logOff(); } catch (_) {}
-  process.exit(1);
-});
   process.exit(1);
 });
