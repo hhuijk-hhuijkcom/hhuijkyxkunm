@@ -9,10 +9,7 @@ addappid(228988,0,"1845444d5e2cfd0ae65ae4a8fedb6e2fbf776fcc5b913ab4ac461bc9a74f8
 addappid(228990,0,"44d8c45ce229a11c4f231a3d2a350eaf80b0d69a8af938ec7ccca720f694b0e8")
 addappid(962131,0,"809ed5f98fa8a3d2c3636c33504157cf05fc683e1810d35e554d7976573a4424")
 
---有多个子仓库的DLC ID都有密钥
-addappid(2161390) -- 有2个子仓库且都有密钥
 
---无仓库DLC
-addappid(962132)
-addappid(962133)
-addappid(962135)
+
+--token
+addtoken(962131,"1768200224774657340")
