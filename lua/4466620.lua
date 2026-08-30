@@ -1,0 +1,7 @@
+--H-huijk
+--主游戏APPID: 4466620
+addappid(4466620,0,"de887f3565af8aa5f3b2cfbf3cecc87912c521ae8e8bd441eafd7d8693715564") -- 主游戏
+
+--depotsID
+addappid(4466621,0,"240a8767c6fcb561914f7c4495d7e5a9bf4dc0a2793a40d75351764b1eafa2f6")
+addappid(4466622,0,"a1afb0bb838f24c8e1b9dd2d8a242c5f9f60f6c3ada589ff1020e8542b06a2d7")
