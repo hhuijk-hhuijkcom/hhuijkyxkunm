@@ -1,0 +1,13 @@
+--H-huijk
+--主游戏APPID: 2358720
+addappid(2358720,0,"b7999cd31cef067d52cd19e44573196c348d2551097592da8b3af383b48427c7") -- 主游戏
+
+--depotsID
+addappid(228989,0,"ad69276eb476cf06c40312df7376d63deac0c838b9a2767005be8bb306ffb853")
+addappid(228990,0,"44d8c45ce229a11c4f231a3d2a350eaf80b0d69a8af938ec7ccca720f694b0e8")
+addappid(229006,0,"9bc3e05ce55153e5c315cb18024602ca15958a7be03adc5ffbe53b00a8524416")
+addappid(2358721,0,"78d5a284965b2206de191dc4ca99d43c9caf5b5e78b47cf0c366fbbb884190d8")
+
+--有多个子仓库的DLC ID都有密钥
+addappid(2672610) -- 唯一子仓库与DLC ID不同且有密钥
+addappid(3288260) -- 有2个子仓库且都有密钥
