@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 const https = require('https');
 let SteamUser;
@@ -170,7 +170,6 @@ async function getAppInfo(appId) {
 }
 function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
   const appIdNum = parseInt(appId);
-  const depotsWithKey = depotIds.filter(did => depotKeys[did]);
   let lua = `--H-huijk\n`;
   lua += `--主游戏APPID: ${appId}\n`;
   if (depotKeys[appIdNum]) {
@@ -179,9 +178,25 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
     lua += `addappid(${appIdNum}) -- 主游戏\n`;
   }
   lua += '\n--depotsID\n';
-  depotsWithKey.forEach(depotId => {
-    lua += `addappid(${depotId},0,"${depotKeys[depotId]}")\n`;
+  // ===== 修复：写入所有有密钥的 depot（主游戏 + DLC），用 Set 去重 =====
+  const writtenDepots = new Set();
+  // 主游戏 depots
+  depotIds.forEach(did => {
+    if (depotKeys[did]) {
+      lua += `addappid(${did},0,"${depotKeys[did]}")\n`;
+      writtenDepots.add(did);
+    }
   });
+  // DLC depots（修复：之前完全遗漏了 DLC 的 depot 密钥）
+  for (const [, dlcDepots] of Object.entries(dlcDepotMap)) {
+    const dlcDepotNum = dlcDepots.map(Number);
+    dlcDepotNum.forEach(did => {
+      if (depotKeys[did] && !writtenDepots.has(did)) {
+        lua += `addappid(${did},0,"${depotKeys[did]}")\n`;
+        writtenDepots.add(did);
+      }
+    });
+  }
   const dlcWithAllKeys = [];
   const dlcWithoutAllKeys = [];
   for (const [dlcId, dlcDepots] of Object.entries(dlcDepotMap)) {
@@ -231,6 +246,16 @@ function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
     if (accessTokens[dlcId]) tokenIds.push(dlcId);
   }
   if (accessTokens[appIdNum]) tokenIds.push(appIdNum);
+  // ===== 修复：也检查所有 depot ID 的 access token =====
+  const allDepotIds = [...depotIds];
+  for (const [, dlcDepots] of Object.entries(dlcDepotMap)) {
+    allDepotIds.push(...dlcDepots.map(Number));
+  }
+  for (const did of allDepotIds) {
+    if (accessTokens[did] && !tokenIds.includes(did)) {
+      tokenIds.push(did);
+    }
+  }
   if (tokenIds.length > 0) {
     lua += '\n--Token\n';
     tokenIds.forEach(id => {
