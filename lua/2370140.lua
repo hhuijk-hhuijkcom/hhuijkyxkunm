@@ -1,0 +1,10 @@
+--H-huijk
+--主游戏APPID: 2370140
+addappid(2370140,0,"3d255bb5072a191a752e2eec3c3d4ef92fc33f782038da12327ee5a2ded5bef4") -- 主游戏
+
+--depotsID
+addappid(2370141,0,"3e08c3e137d2bc8ede251c314d20b62e07b0185ddb75a98655791633bcf3513c")
+addappid(3029930,0,"1a03a204932687a95ab1eac9a789c108f1057cf2fca670a8a59c14235b56c461")
+
+--无仓库DLC
+addappid(3029930) -- DLC
