@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       webhook_url:
-        description: '企业微信 webhook（可选，两个 key 用逗号分隔）'
+        description: '企业微信 webhook（两个 key 用逗号分隔）'
         required: false
         default: ''
         type: string
@@ -30,7 +30,7 @@ jobs:
       - name: 安装 steam-user
         run: npm install steam-user
 
-      - name: 写入检查脚本
+      - name: 写入检测脚本
         run: |
           cat > check-integrity.js << 'SCRIPT'
           const fs = require('fs');
@@ -93,21 +93,18 @@ jobs:
 
           async function main() {
             console.log('========================================');
-            console.log('Lua integrity check (GitHub Actions)');
+            console.log('Lua integrity check (read-only)');
             console.log('Files:', APP_IDS.length);
             console.log('========================================\n');
 
-            console.log('Steam anonymous login...');
+            console.log('Steam login...');
             const loginRes = await loginSteam();
-            if (!loginRes.ok) {
-              console.log('FAIL:', loginRes.reason);
-              process.exit(1);
-            }
+            if (!loginRes.ok) { console.log('FAIL:', loginRes.reason); process.exit(1); }
             const client = loginRes.client;
             console.log('OK\n');
 
             const results = [];
-            let okCount = 0, missingCount = 0, extraCount = 0, errCount = 0;
+            let okCount = 0, missingCount = 0, extraCount = 0, fileMissingCount = 0, errCount = 0;
             let totalMissing = 0, totalExtra = 0;
 
             for (let idx = 0; idx < APP_IDS.length; idx++) {
@@ -116,19 +113,12 @@ jobs:
               const tag = `[${idx + 1}/${APP_IDS.length}]`;
 
               try {
-                // Check if lua file exists in repo
-                if (!fs.existsSync(luaPath)) {
-                  console.log(`${tag} ❌ ${appId} lua file not found in repo`);
-                  errCount++;
-                  results.push({ mainAppId: appId, status: 'error', error: 'lua file not in repo' });
-                  await new Promise(r => setTimeout(r, 500));
-                  continue;
+                const luaExists = fs.existsSync(luaPath);
+                let remoteIds = new Set();
+                if (luaExists) {
+                  remoteIds = parseLuaIds(fs.readFileSync(luaPath, 'utf-8'));
                 }
 
-                const content = fs.readFileSync(luaPath, 'utf-8');
-                const remoteIds = parseLuaIds(content);
-
-                // steam-user depots (call twice, merge)
                 const depots = await getDepotIdsTwice(client, Number(appId));
                 const realIds = new Set([Number(appId), ...depots]);
 
@@ -136,29 +126,26 @@ jobs:
                 const extra   = [...remoteIds].filter(id => !realIds.has(id) && id !== Number(appId)).sort((a, b) => a - b);
 
                 let status = 'ok';
-                if (missing.length > 0) status = 'missing';
-                else if (extra.length > 0) status = 'extra';
-
-                if (status === 'ok') okCount++;
-                else if (status === 'missing') missingCount++;
-                else extraCount++;
+                if (!luaExists) { status = 'file-missing'; fileMissingCount++; }
+                else if (missing.length > 0) { status = 'missing'; missingCount++; }
+                else if (extra.length > 0) { status = 'extra'; extraCount++; }
+                else okCount++;
 
                 totalMissing += missing.length;
                 totalExtra += extra.length;
 
-                const icon = status === 'ok' ? '✅' : '⚠️';
-                console.log(`${tag} ${icon} ${appId} steam=${depots.length} remote=${remoteIds.size} real=${realIds.size}`);
-                if (missing.length > 0) console.log(`    missing: ${missing.join(', ')}`);
-                if (extra.length > 0)   console.log(`    extra:   ${extra.join(', ')}`);
+                const icon = status === 'ok' ? '✅' : status === 'file-missing' ? '🗂️' : '⚠️';
+                console.log(`${tag} ${icon} ${appId}.lua ${status} steam=${depots.length} remote=${remoteIds.size}`);
+                if (!luaExists) console.log(`    🗂️ FILE NOT FOUND: ${luaPath}`);
+                if (missing.length > 0) console.log(`    ⚠️ 缺(${missing.length}): ${missing.join(', ')}`);
+                if (extra.length > 0)   console.log(`    ⚠️ 多(${extra.length}): ${extra.join(', ')}`);
 
                 results.push({
-                  mainAppId: appId, status,
-                  depotCount: depots.length,
-                  remoteCount: remoteIds.size, realCount: realIds.size,
-                  missingInRemote: missing, extraInRemote: extra,
+                  mainAppId: appId, status, fileExists: luaExists,
+                  depotCount: depots.length, remoteCount: remoteIds.size, realCount: realIds.size,
+                  missingInLua: missing, extraInLua: extra,
                 });
 
-                // slow down — 1.2s between files
                 await new Promise(r => setTimeout(r, 1200));
 
               } catch (e) {
@@ -171,18 +158,18 @@ jobs:
 
             console.log('\n========================================');
             console.log(`RESULTS: ${APP_IDS.length} files`);
-            console.log(`  ✅ OK:      ${okCount}`);
-            console.log(`  ⚠️ Missing: ${missingCount}`);
-            console.log(`  ⚠️ Extra:   ${extraCount}`);
-            console.log(`  ❌ Error:   ${errCount}`);
-            console.log(`  Missing IDs total: ${totalMissing}`);
-            console.log(`  Extra IDs total:   ${totalExtra}`);
+            console.log(`  ✅ OK:        ${okCount}`);
+            console.log(`  ⚠️ 内容缺:    ${missingCount} (共 ${totalMissing} 个ID)`);
+            console.log(`  ⚠️ 内容多:    ${extraCount} (共 ${totalExtra} 个ID)`);
+            console.log(`  🗂️ 文件缺失:  ${fileMissingCount}`);
+            console.log(`  ❌ 错误:      ${errCount}`);
             console.log('========================================');
 
             const summary = {
               timestamp: new Date().toISOString(),
               total: APP_IDS.length,
-              ok: okCount, missing: missingCount, extra: extraCount, error: errCount,
+              ok: okCount, missing: missingCount, extra: extraCount,
+              fileMissing: fileMissingCount, error: errCount,
               missingTotal: totalMissing, extraTotal: totalExtra,
               results,
             };
@@ -195,7 +182,7 @@ jobs:
           main().catch(e => { console.error('FATAL:', e); process.exit(1); });
           SCRIPT
 
-      - name: 运行完整性检查
+      - name: 运行完整性检测
         env:
           NODE_TLS_REJECT_UNAUTHORIZED: "0"
           INPUT_APP_IDS: ${{ inputs.app_ids }}
@@ -213,37 +200,53 @@ jobs:
         if: always() && inputs.webhook_url != ''
         run: |
           python3 -c "
-          import json, sys, urllib.request
-          data = json.load(open('check-result.json'))
-          s = data
-          emoji = '✅' if s['error'] == 0 and s['missing'] == 0 and s['extra'] == 0 else '⚠️'
+          import json, urllib.request
+          s = json.load(open('check-result.json'))
+          hasProblem = (s['missing'] + s['extra'] + s.get('fileMissing', 0) + s['error']) > 0
+          emoji = '⚠️' if hasProblem else '✅'
+
           lines = [
             f'## {emoji} Lua 完整性检查',
             f'> **总计:** {s[\"total\"]}',
             f'> ✅ OK: **{s[\"ok\"]}**',
-            f'> ⚠️ 缺depot: **{s[\"missing\"]}** (共 {s[\"missingTotal\"]} 个ID)',
-            f'> ⚠️ 多余ID: **{s[\"extra\"]}** (共 {s[\"extraTotal\"]} 个ID)',
+            f'> 🗂️ 文件缺失: **{s.get(\"fileMissing\", 0)}**',
+            f'> ⚠️ 内容缺: **{s[\"missing\"]}** ({s[\"missingTotal\"]}个ID)',
+            f'> ⚠️ 内容多: **{s[\"extra\"]}** ({s[\"extraTotal\"]}个ID)',
             f'> ❌ 错误: **{s[\"error\"]}**',
             '',
+            f'[查看 Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})',
           ]
-          # list missing details
-          miss_items = [r for r in s['results'] if r['missingInRemote']]
-          if miss_items:
-            lines.append('**缺失详情:**')
-            for r in miss_items[:10]:
-              ids = ','.join(str(x) for x in r['missingInRemote'][:5])
-              more = '' if len(r['missingInRemote'])<=5 else f'...等{len(r[\"missingInRemote\"])}个'
-              lines.append(f'- `{r[\"mainAppId\"]}` 缺: {ids}{more}')
-          if len(miss_items) > 10:
-            lines.append(f'- ...还有 {len(miss_items)-10} 个')
+
+          # 文件缺失列表
+          fm = [r for r in s['results'] if r['status'] == 'file-missing']
+          if fm:
+            lines.append('')
+            lines.append(f'**🗂️ 文件缺失 ({len(fm)}个):**')
+            for r in fm[:20]:
+              lines.append(f'- `{r[\"mainAppId\"]}.lua`')
+            if len(fm) > 20:
+              lines.append(f'- ...还有 {len(fm)-20} 个')
+
+          # 内容异常列表
+          bad = [r for r in s['results'] if r['status'] in ('missing', 'extra')]
+          if bad:
+            lines.append('')
+            lines.append(f'**⚠️ 内容异常 ({len(bad)}个):**')
+            for r in bad[:20]:
+              parts = []
+              if r.get('missingInLua'): parts.append(f'缺{r[\"missingInLua\"]}')
+              if r.get('extraInLua'):   parts.append(f'多{r[\"extraInLua\"]}')
+              lines.append(f'- `{r[\"mainAppId\"]}.lua` {\" \".join(parts)}')
+            if len(bad) > 20:
+              lines.append(f'- ...还有 {len(bad)-20} 个')
+
           payload = json.dumps({'msgtype': 'markdown', 'markdown': {'content': '\n'.join(lines)}}).encode()
           for url in '${{ inputs.webhook_url }}'.split(','):
             url = url.strip()
             if not url: continue
             try:
               req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
-              r = urllib.request.urlopen(req, timeout=5)
-              print(f'push ok: {url[:50]}...')
+              urllib.request.urlopen(req, timeout=5)
             except Exception as e:
               print(f'push fail: {e}')
           "
