@@ -1,0 +1,249 @@
+name: Lua完整性检查
+run-name: 检查 Lua 完整性 (${{ inputs.app_ids_count }} 个文件)
+on:
+  workflow_dispatch:
+    inputs:
+      app_ids:
+        description: '逗号分隔的 AppID 列表'
+        required: true
+        type: string
+      webhook_url:
+        description: '企业微信 webhook（可选，两个 key 用逗号分隔）'
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 拉取仓库
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 steam-user
+        run: npm install steam-user
+
+      - name: 写入检查脚本
+        run: |
+          cat > check-integrity.js << 'SCRIPT'
+          const fs = require('fs');
+          const path = require('path');
+          const SteamUser = require('steam-user');
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+          const INPUT = process.env.INPUT_APP_IDS || '';
+          const APP_IDS = INPUT.split(',').map(s => s.trim()).filter(s => s && /^\d+$/.test(s));
+
+          function parseLuaIds(content) {
+            const ids = new Set();
+            let m;
+            const reApp = /addappid\s*\(\s*(\d+)/g;
+            while ((m = reApp.exec(content)) !== null) ids.add(Number(m[1]));
+            const reToken = /addtoken\s*\(\s*(\d+)/g;
+            while ((m = reToken.exec(content)) !== null) ids.add(Number(m[1]));
+            return ids;
+          }
+
+          function loginSteam() {
+            return new Promise((resolve) => {
+              const c = new SteamUser({ enablePicsCache: false, autoRelogin: false });
+              let done = false;
+              const finish = (ok, reason) => {
+                if (done) return;
+                done = true;
+                clearTimeout(t);
+                if (ok) resolve({ ok: true, client: c });
+                else { try { c.logOff(); } catch (_) {} resolve({ ok: false, reason }); }
+              };
+              const t = setTimeout(() => finish(false, 'timeout'), 25000);
+              c.once('loggedOn', () => finish(true));
+              c.once('error', (e) => finish(false, String(e.message || e)));
+              c.once('debug', () => {});
+              try { c.logOn({ anonymous: true }); } catch (e) { finish(false, String(e.message)); }
+            });
+          }
+
+          function getDepotIds(client, appId) {
+            return new Promise((resolve) => {
+              try {
+                client.getProductInfo([appId], [], false, (err, apps) => {
+                  if (err || !apps || !apps[appId] || !apps[appId].appinfo || !apps[appId].appinfo.depots) {
+                    resolve([]); return;
+                  }
+                  resolve(Object.keys(apps[appId].appinfo.depots).filter(k => !isNaN(k)).map(Number));
+                });
+              } catch (_) { resolve([]); }
+            });
+          }
+
+          async function getDepotIdsTwice(client, appId) {
+            if (!client) return [];
+            const a = await getDepotIds(client, appId);
+            await new Promise(r => setTimeout(r, 800));
+            const b = await getDepotIds(client, appId);
+            return [...new Set([...a, ...b])].sort((x, y) => x - y);
+          }
+
+          async function main() {
+            console.log('========================================');
+            console.log('Lua integrity check (GitHub Actions)');
+            console.log('Files:', APP_IDS.length);
+            console.log('========================================\n');
+
+            console.log('Steam anonymous login...');
+            const loginRes = await loginSteam();
+            if (!loginRes.ok) {
+              console.log('FAIL:', loginRes.reason);
+              process.exit(1);
+            }
+            const client = loginRes.client;
+            console.log('OK\n');
+
+            const results = [];
+            let okCount = 0, missingCount = 0, extraCount = 0, errCount = 0;
+            let totalMissing = 0, totalExtra = 0;
+
+            for (let idx = 0; idx < APP_IDS.length; idx++) {
+              const appId = APP_IDS[idx];
+              const luaPath = path.join('lua', `${appId}.lua`);
+              const tag = `[${idx + 1}/${APP_IDS.length}]`;
+
+              try {
+                // Check if lua file exists in repo
+                if (!fs.existsSync(luaPath)) {
+                  console.log(`${tag} ❌ ${appId} lua file not found in repo`);
+                  errCount++;
+                  results.push({ mainAppId: appId, status: 'error', error: 'lua file not in repo' });
+                  await new Promise(r => setTimeout(r, 500));
+                  continue;
+                }
+
+                const content = fs.readFileSync(luaPath, 'utf-8');
+                const remoteIds = parseLuaIds(content);
+
+                // steam-user depots (call twice, merge)
+                const depots = await getDepotIdsTwice(client, Number(appId));
+                const realIds = new Set([Number(appId), ...depots]);
+
+                const missing = [...realIds].filter(id => !remoteIds.has(id)).sort((a, b) => a - b);
+                const extra   = [...remoteIds].filter(id => !realIds.has(id) && id !== Number(appId)).sort((a, b) => a - b);
+
+                let status = 'ok';
+                if (missing.length > 0) status = 'missing';
+                else if (extra.length > 0) status = 'extra';
+
+                if (status === 'ok') okCount++;
+                else if (status === 'missing') missingCount++;
+                else extraCount++;
+
+                totalMissing += missing.length;
+                totalExtra += extra.length;
+
+                const icon = status === 'ok' ? '✅' : '⚠️';
+                console.log(`${tag} ${icon} ${appId} steam=${depots.length} remote=${remoteIds.size} real=${realIds.size}`);
+                if (missing.length > 0) console.log(`    missing: ${missing.join(', ')}`);
+                if (extra.length > 0)   console.log(`    extra:   ${extra.join(', ')}`);
+
+                results.push({
+                  mainAppId: appId, status,
+                  depotCount: depots.length,
+                  remoteCount: remoteIds.size, realCount: realIds.size,
+                  missingInRemote: missing, extraInRemote: extra,
+                });
+
+                // slow down — 1.2s between files
+                await new Promise(r => setTimeout(r, 1200));
+
+              } catch (e) {
+                console.log(`${tag} ❌ ${appId}: ${e.message}`);
+                errCount++;
+                results.push({ mainAppId: appId, status: 'error', error: e.message });
+                await new Promise(r => setTimeout(r, 800));
+              }
+            }
+
+            console.log('\n========================================');
+            console.log(`RESULTS: ${APP_IDS.length} files`);
+            console.log(`  ✅ OK:      ${okCount}`);
+            console.log(`  ⚠️ Missing: ${missingCount}`);
+            console.log(`  ⚠️ Extra:   ${extraCount}`);
+            console.log(`  ❌ Error:   ${errCount}`);
+            console.log(`  Missing IDs total: ${totalMissing}`);
+            console.log(`  Extra IDs total:   ${totalExtra}`);
+            console.log('========================================');
+
+            const summary = {
+              timestamp: new Date().toISOString(),
+              total: APP_IDS.length,
+              ok: okCount, missing: missingCount, extra: extraCount, error: errCount,
+              missingTotal: totalMissing, extraTotal: totalExtra,
+              results,
+            };
+            fs.writeFileSync('check-result.json', JSON.stringify(summary, null, 2));
+
+            try { client.logOff(); } catch (_) {}
+            process.exit(0);
+          }
+
+          main().catch(e => { console.error('FATAL:', e); process.exit(1); });
+          SCRIPT
+
+      - name: 运行完整性检查
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: "0"
+          INPUT_APP_IDS: ${{ inputs.app_ids }}
+        run: node check-integrity.js
+
+      - name: 上传结果 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-result
+          path: check-result.json
+          if-no-files-found: warn
+
+      - name: 企业微信推送
+        if: always() && inputs.webhook_url != ''
+        run: |
+          python3 -c "
+          import json, sys, urllib.request
+          data = json.load(open('check-result.json'))
+          s = data
+          emoji = '✅' if s['error'] == 0 and s['missing'] == 0 and s['extra'] == 0 else '⚠️'
+          lines = [
+            f'## {emoji} Lua 完整性检查',
+            f'> **总计:** {s[\"total\"]}',
+            f'> ✅ OK: **{s[\"ok\"]}**',
+            f'> ⚠️ 缺depot: **{s[\"missing\"]}** (共 {s[\"missingTotal\"]} 个ID)',
+            f'> ⚠️ 多余ID: **{s[\"extra\"]}** (共 {s[\"extraTotal\"]} 个ID)',
+            f'> ❌ 错误: **{s[\"error\"]}**',
+            '',
+          ]
+          # list missing details
+          miss_items = [r for r in s['results'] if r['missingInRemote']]
+          if miss_items:
+            lines.append('**缺失详情:**')
+            for r in miss_items[:10]:
+              ids = ','.join(str(x) for x in r['missingInRemote'][:5])
+              more = '' if len(r['missingInRemote'])<=5 else f'...等{len(r[\"missingInRemote\"])}个'
+              lines.append(f'- `{r[\"mainAppId\"]}` 缺: {ids}{more}')
+          if len(miss_items) > 10:
+            lines.append(f'- ...还有 {len(miss_items)-10} 个')
+          payload = json.dumps({'msgtype': 'markdown', 'markdown': {'content': '\n'.join(lines)}}).encode()
+          for url in '${{ inputs.webhook_url }}'.split(','):
+            url = url.strip()
+            if not url: continue
+            try:
+              req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
+              r = urllib.request.urlopen(req, timeout=5)
+              print(f'push ok: {url[:50]}...')
+            except Exception as e:
+              print(f'push fail: {e}')
+          "
