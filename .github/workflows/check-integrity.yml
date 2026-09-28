@@ -217,28 +217,16 @@ jobs:
             f'[查看 Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})',
           ]
 
-          # 文件缺失列表
-          fm = [r for r in s['results'] if r['status'] == 'file-missing']
-          if fm:
-            lines.append('')
-            lines.append(f'**🗂️ 文件缺失 ({len(fm)}个):**')
-            for r in fm[:20]:
-              lines.append(f'- `{r[\"mainAppId\"]}.lua`')
-            if len(fm) > 20:
-              lines.append(f'- ...还有 {len(fm)-20} 个')
-
-          # 内容异常列表
-          bad = [r for r in s['results'] if r['status'] in ('missing', 'extra')]
+          # 需要修复的文件清单（只列文件名，不列 depot 细节）
+          bad = [r for r in s['results'] if r['status'] in ('file-missing', 'missing')]
           if bad:
             lines.append('')
-            lines.append(f'**⚠️ 内容异常 ({len(bad)}个):**')
-            for r in bad[:20]:
-              parts = []
-              if r.get('missingInLua'): parts.append(f'缺{r[\"missingInLua\"]}')
-              if r.get('extraInLua'):   parts.append(f'多{r[\"extraInLua\"]}')
-              lines.append(f'- `{r[\"mainAppId\"]}.lua` {\" \".join(parts)}')
-            if len(bad) > 20:
-              lines.append(f'- ...还有 {len(bad)-20} 个')
+            lines.append(f'**⚠️ 需要修复的文件 ({len(bad)}个):**')
+            for r in bad[:30]:
+              tag = '🗂️ 缺文件' if r['status'] == 'file-missing' else '⚠️ 缺depot'
+              lines.append(f'- `{r[\"mainAppId\"]}.lua` ({tag})')
+            if len(bad) > 30:
+              lines.append(f'- ...还有 {len(bad)-30} 个')
 
           payload = json.dumps({'msgtype': 'markdown', 'markdown': {'content': '\n'.join(lines)}}).encode()
           for url in '${{ inputs.webhook_url }}'.split(','):
