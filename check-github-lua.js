@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // ===== config =====
 const REPO_OWNER = 'hhuijk-hhuijkcom';
@@ -17,10 +16,12 @@ function getArg(name) {
   }
   return null;
 }
+
 let LUA_DIR = getArg('lua-dir') || process.env.LUA_DIR || path.join(__dirname, 'lua');
 LUA_DIR = path.resolve(LUA_DIR);
 const GITHUB_TOKEN = getArg('github-token') || process.env.GITHUB_TOKEN || '';
 const OUT_JSON = path.join(LUA_DIR, '_github-check.json');
+const OUT_TXT = path.join(LUA_DIR, '_github-check.txt');
 
 // ===== github api =====
 function ghRequest(urlPath) {
@@ -54,16 +55,15 @@ function ghRequest(urlPath) {
 }
 
 async function listRemoteLuaFiles() {
-  // Recursively get all files in lua/ directory
   const url = `/repos/${REPO_OWNER}/${REPO_NAME}/git/trees/${REPO_BRANCH}?recursive=1`;
   const data = await ghRequest(url);
   if (!data || !data.tree) throw new Error('Failed to get repo tree');
   return data.tree
     .filter(f => f.type === 'blob' && f.path.startsWith(REPO_LUA_PATH + '/') && f.path.endsWith('.lua'))
     .map(f => ({
-      path: f.path,              // "lua/12345.lua"
-      name: path.basename(f.path), // "12345.lua"
-      appId: path.basename(f.path, '.lua'), // "12345"
+      path: f.path,
+      name: path.basename(f.path),
+      appId: path.basename(f.path, '.lua'),
       sha: f.sha,
       size: f.size || 0,
     }));
@@ -104,17 +104,17 @@ async function main() {
 
   // 2. local
   const localFiles = listLocalLuaFiles();
-  console.log(`Local:  ${localFiles.length} .lua files\n`);
+  console.log(`Local: ${localFiles.length} .lua files\n`);
 
   // 3. compare
-  const remoteMap = new Map(); // appId -> file info
+  const remoteMap = new Map();
   remoteFiles.forEach(f => remoteMap.set(f.appId, f));
   const localMap = new Map();
   localFiles.forEach(f => localMap.set(f.appId, f));
 
-  const onlyRemote = [];  // exists on GitHub but NOT locally → need to download
-  const onlyLocal = [];   // exists locally but NOT on GitHub → extra
-  const both = [];        // exists on both
+  const onlyRemote = [];
+  const onlyLocal = [];
+  const both = [];
 
   for (const [appId, rFile] of remoteMap) {
     if (localMap.has(appId)) {
@@ -136,26 +136,25 @@ async function main() {
   console.log('========================================');
   console.log('RESULTS');
   console.log('========================================');
-
   if (onlyRemote.length > 0) {
-    console.log(`\n⚠️  Missing locally (${onlyRemote.length}):`);
-    onlyRemote.forEach(f => console.log(`    + ${f.remote.name}  (${f.remote.size || '?'} bytes)`));
+    console.log(`\nMissing locally (${onlyRemote.length}):`);
+    onlyRemote.forEach(f => console.log(`  + ${f.remote.name} (${f.remote.size || '?'} bytes)`));
   } else {
-    console.log('\n✅  All remote files exist locally');
+    console.log('\nAll remote files exist locally');
   }
-
   if (onlyLocal.length > 0) {
-    console.log(`\n🗑️   Extra locally (${onlyLocal.length}):`);
-    onlyLocal.forEach(f => console.log(`    - ${f.local.name}  (${f.local.size} bytes)`));
+    console.log(`\nExtra locally (${onlyLocal.length}):`);
+    onlyLocal.forEach(f => console.log(`  - ${f.local.name} (${f.local.size} bytes)`));
   } else {
-    console.log('\n✅  No extra local files');
+    console.log('\nNo extra local files');
   }
 
-  console.log(`\n📊  Summary:`);
-  console.log(`    Remote only: ${onlyRemote.length}`);
-  console.log(`    Local only:  ${onlyLocal.length}`);
-  console.log(`    Both:        ${both.length}`);
-  console.log(`    Match:       ${remoteFiles.length === localFiles.length && onlyRemote.length === 0 && onlyLocal.length === 0 ? 'YES ✅' : 'NO ❌'}`);
+  const match = remoteFiles.length === localFiles.length && onlyRemote.length === 0 && onlyLocal.length === 0;
+  console.log(`\nSummary:`);
+  console.log(`  Remote only: ${onlyRemote.length}`);
+  console.log(`  Local only:  ${onlyLocal.length}`);
+  console.log(`  Both:        ${both.length}`);
+  console.log(`  Match:       ${match ? 'YES' : 'NO'}`);
 
   // 5. save json
   const summary = {
@@ -166,17 +165,59 @@ async function main() {
     localCount: localFiles.length,
     missingLocally: onlyRemote.map(f => ({ appId: f.appId, name: f.remote.name, size: f.remote.size })),
     extraLocally: onlyLocal.map(f => ({ appId: f.appId, name: f.local.name, size: f.local.size })),
-    match: remoteFiles.length === localFiles.length && onlyRemote.length === 0 && onlyLocal.length === 0,
+    match: match,
   };
   try {
     fs.writeFileSync(OUT_JSON, JSON.stringify(summary, null, 2));
-    console.log(`\n📝 Report: ${OUT_JSON}`);
+    console.log(`\nJSON report: ${OUT_JSON}`);
   } catch (e) {
-    console.log('\n⚠️  Cannot write report:', e.message);
+    console.log('\nCannot write JSON report:', e.message);
+  }
+
+  // 6. save txt
+  const txtLines = [];
+  txtLines.push('===== GitHub Lua Sync Report =====');
+  txtLines.push('Time:     ' + new Date().toISOString());
+  txtLines.push('Repo:     ' + REPO_OWNER + '/' + REPO_NAME + ' @ ' + REPO_BRANCH);
+  txtLines.push('Local:    ' + LUA_DIR);
+  txtLines.push('');
+  txtLines.push('Remote .lua files: ' + remoteFiles.length);
+  txtLines.push('Local  .lua files: ' + localFiles.length);
+  txtLines.push('Match:             ' + (match ? 'YES' : 'NO'));
+  txtLines.push('');
+  txtLines.push('--- Missing locally (remote has, local no) ---');
+  if (onlyRemote.length > 0) {
+    onlyRemote.forEach(f => txtLines.push('  + ' + f.remote.name + '  (' + (f.remote.size || '?') + ' bytes)'));
+  } else {
+    txtLines.push('  (none)');
+  }
+  txtLines.push('');
+  txtLines.push('--- Extra locally (local has, remote no) ---');
+  if (onlyLocal.length > 0) {
+    onlyLocal.forEach(f => txtLines.push('  - ' + f.local.name + '  (' + f.local.size + ' bytes)'));
+  } else {
+    txtLines.push('  (none)');
+  }
+  txtLines.push('');
+  txtLines.push('--- Files on both sides ---');
+  if (both.length > 0) {
+    both.forEach(f => txtLines.push('  = ' + f.remote.name + '  (remote:' + (f.remote.size||'?') + ' / local:' + f.local.size + ')'));
+  } else {
+    txtLines.push('  (none)');
+  }
+  txtLines.push('');
+  txtLines.push('================================');
+  try {
+    fs.writeFileSync(OUT_TXT, txtLines.join('\n'));
+    console.log('TXT report:  ' + OUT_TXT);
+  } catch (e) {
+    console.log('Cannot write TXT report:', e.message);
   }
 
   console.log('========================================');
-  process.exit(onlyRemote.length > 0 || onlyLocal.length > 0 ? 1 : 0);
+
+  // 有差异就 exit(1)，让 Actions 标红
+  process.exit(match ? 0 : 1);
 }
 
 main().catch(e => { console.error('FATAL:', e); process.exit(1); });
