@@ -90,7 +90,7 @@ jobs:
             lines.push('========================================');
             lines.push(`  Lua 完整性检查报告`);
             lines.push(`  生成时间: ${now}`);
-            lines.push(`  检测文件数: ${APP_IDS.length}`);
+            lines.push(`  （记得去反馈）检测文件数: ${APP_IDS.length}`);
             lines.push('========================================');
             lines.push('');
 
