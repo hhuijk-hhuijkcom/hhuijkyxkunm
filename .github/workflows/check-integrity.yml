@@ -1,5 +1,5 @@
 name: Lua完整性检查
-run-name: 检查 Lua 完整性 (${{ inputs.app_ids_count }} 个文件)
+run-name: 检查 Lua 完整性
 on:
   workflow_dispatch:
     inputs:
@@ -7,13 +7,8 @@ on:
         description: '逗号分隔的 AppID 列表'
         required: true
         type: string
-      webhook_url:
-        description: '企业微信 webhook（两个 key 用逗号分隔）'
-        required: false
-        default: ''
-        type: string
 permissions:
-  contents: read
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -56,9 +51,7 @@ jobs:
               const c = new SteamUser({ enablePicsCache: false, autoRelogin: false });
               let done = false;
               const finish = (ok, reason) => {
-                if (done) return;
-                done = true;
-                clearTimeout(t);
+                if (done) return; done = true; clearTimeout(t);
                 if (ok) resolve({ ok: true, client: c });
                 else { try { c.logOff(); } catch (_) {} resolve({ ok: false, reason }); }
               };
@@ -92,20 +85,28 @@ jobs:
           }
 
           async function main() {
-            console.log('========================================');
-            console.log('Lua integrity check (read-only)');
-            console.log('Files:', APP_IDS.length);
-            console.log('========================================\n');
+            const lines = [];
+            const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+            lines.push('========================================');
+            lines.push(`  Lua 完整性检查报告`);
+            lines.push(`  生成时间: ${now}`);
+            lines.push(`  检测文件数: ${APP_IDS.length}`);
+            lines.push('========================================');
+            lines.push('');
 
             console.log('Steam login...');
             const loginRes = await loginSteam();
-            if (!loginRes.ok) { console.log('FAIL:', loginRes.reason); process.exit(1); }
+            if (!loginRes.ok) {
+              lines.push(`❌ Steam 登录失败: ${loginRes.reason}`);
+              fs.writeFileSync('check-report.txt', lines.join('\n'));
+              process.exit(1);
+            }
             const client = loginRes.client;
             console.log('OK\n');
 
-            const results = [];
-            let okCount = 0, missingCount = 0, extraCount = 0, fileMissingCount = 0, errCount = 0;
-            let totalMissing = 0, totalExtra = 0;
+            let okCount = 0, fileMissingCount = 0, missingCount = 0, errCount = 0;
+            const fileMissingList = [];
+            const missingList = [];
 
             for (let idx = 0; idx < APP_IDS.length; idx++) {
               const appId = APP_IDS[idx];
@@ -115,66 +116,45 @@ jobs:
               try {
                 const luaExists = fs.existsSync(luaPath);
                 let remoteIds = new Set();
-                if (luaExists) {
-                  remoteIds = parseLuaIds(fs.readFileSync(luaPath, 'utf-8'));
-                }
+                if (luaExists) remoteIds = parseLuaIds(fs.readFileSync(luaPath, 'utf-8'));
 
                 const depots = await getDepotIdsTwice(client, Number(appId));
                 const realIds = new Set([Number(appId), ...depots]);
-
                 const missing = [...realIds].filter(id => !remoteIds.has(id)).sort((a, b) => a - b);
-                const extra   = [...remoteIds].filter(id => !realIds.has(id) && id !== Number(appId)).sort((a, b) => a - b);
 
-                let status = 'ok';
-                if (!luaExists) { status = 'file-missing'; fileMissingCount++; }
-                else if (missing.length > 0) { status = 'missing'; missingCount++; }
-                else if (extra.length > 0) { status = 'extra'; extraCount++; }
-                else okCount++;
-
-                totalMissing += missing.length;
-                totalExtra += extra.length;
-
-                const icon = status === 'ok' ? '✅' : status === 'file-missing' ? '🗂️' : '⚠️';
-                console.log(`${tag} ${icon} ${appId}.lua ${status} steam=${depots.length} remote=${remoteIds.size}`);
-                if (!luaExists) console.log(`    🗂️ FILE NOT FOUND: ${luaPath}`);
-                if (missing.length > 0) console.log(`    ⚠️ 缺(${missing.length}): ${missing.join(', ')}`);
-                if (extra.length > 0)   console.log(`    ⚠️ 多(${extra.length}): ${extra.join(', ')}`);
-
-                results.push({
-                  mainAppId: appId, status, fileExists: luaExists,
-                  depotCount: depots.length, remoteCount: remoteIds.size, realCount: realIds.size,
-                  missingInLua: missing, extraInLua: extra,
-                });
-
+                if (!luaExists) {
+                  fileMissingCount++;
+                  fileMissingList.push(appId);
+                  lines.push(`🗂️ ${appId}.lua — 缺少文件 (steam depot=${depots.length})`);
+                  console.log(`${tag} 🗂️ ${appId}.lua missing`);
+                } else if (missing.length > 0) {
+                  missingCount++;
+                  missingList.push({ appId, count: missing.length, ids: missing.join(',') });
+                  lines.push(`⚠️ ${appId}.lua — 缺 ${missing.length} 个 depot (steam=${depots.length}, 本地=${remoteIds.size})`);
+                  console.log(`${tag} ⚠️ ${appId}.lua missing ${missing.length}`);
+                } else {
+                  okCount++;
+                  console.log(`${tag} ✅ ${appId}.lua`);
+                }
                 await new Promise(r => setTimeout(r, 1200));
-
               } catch (e) {
-                console.log(`${tag} ❌ ${appId}: ${e.message}`);
                 errCount++;
-                results.push({ mainAppId: appId, status: 'error', error: e.message });
+                lines.push(`❌ ${appId}.lua — 检测失败: ${e.message}`);
+                console.log(`${tag} ❌ ${appId}: ${e.message}`);
                 await new Promise(r => setTimeout(r, 800));
               }
             }
 
-            console.log('\n========================================');
-            console.log(`RESULTS: ${APP_IDS.length} files`);
-            console.log(`  ✅ OK:        ${okCount}`);
-            console.log(`  ⚠️ 内容缺:    ${missingCount} (共 ${totalMissing} 个ID)`);
-            console.log(`  ⚠️ 内容多:    ${extraCount} (共 ${totalExtra} 个ID)`);
-            console.log(`  🗂️ 文件缺失:  ${fileMissingCount}`);
-            console.log(`  ❌ 错误:      ${errCount}`);
-            console.log('========================================');
+            lines.push('');
+            lines.push('========================================');
+            lines.push(`  ✅ 正常: ${okCount}`);
+            lines.push(`  🗂️ 缺少文件: ${fileMissingCount}`);
+            lines.push(`  ⚠️ 缺depot: ${missingCount}`);
+            lines.push(`  ❌ 错误: ${errCount}`);
+            lines.push(`  📊 总计: ${APP_IDS.length}`);
+            lines.push('========================================');
 
-            const summary = {
-              timestamp: new Date().toISOString(),
-              total: APP_IDS.length,
-              ok: okCount, missing: missingCount, extra: extraCount,
-              fileMissing: fileMissingCount, error: errCount,
-              missingTotal: totalMissing, extraTotal: totalExtra,
-              results,
-            };
-            fs.writeFileSync('check-result.json', JSON.stringify(summary, null, 2));
-
+            fs.writeFileSync('check-report.txt', lines.join('\n'), 'utf-8');
             try { client.logOff(); } catch (_) {}
             process.exit(0);
           }
@@ -182,59 +162,16 @@ jobs:
           main().catch(e => { console.error('FATAL:', e); process.exit(1); });
           SCRIPT
 
-      - name: 运行完整性检测
+      - name: 运行检测
         env:
           NODE_TLS_REJECT_UNAUTHORIZED: "0"
           INPUT_APP_IDS: ${{ inputs.app_ids }}
         run: node check-integrity.js
 
-      - name: 上传结果 artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: 提交报告到仓库
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          name: check-result
-          path: check-result.json
-          if-no-files-found: warn
-
-      - name: 企业微信推送
-        if: always() && inputs.webhook_url != ''
-        run: |
-          python3 -c "
-          import json, urllib.request
-          s = json.load(open('check-result.json'))
-          hasProblem = (s['missing'] + s['extra'] + s.get('fileMissing', 0) + s['error']) > 0
-          emoji = '⚠️' if hasProblem else '✅'
-
-          lines = [
-            f'## {emoji} Lua 完整性检查',
-            f'> **总计:** {s[\"total\"]}',
-            f'> ✅ OK: **{s[\"ok\"]}**',
-            f'> 🗂️ 文件缺失: **{s.get(\"fileMissing\", 0)}**',
-            f'> ⚠️ 内容缺: **{s[\"missing\"]}** ({s[\"missingTotal\"]}个ID)',
-            f'> ⚠️ 内容多: **{s[\"extra\"]}** ({s[\"extraTotal\"]}个ID)',
-            f'> ❌ 错误: **{s[\"error\"]}**',
-            '',
-            f'[查看 Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})',
-          ]
-
-          # 需要修复的文件清单（只列文件名，不列 depot 细节）
-          bad = [r for r in s['results'] if r['status'] in ('file-missing', 'missing')]
-          if bad:
-            lines.append('')
-            lines.append(f'**⚠️ 需要修复的文件 ({len(bad)}个):**')
-            for r in bad[:30]:
-              tag = '🗂️ 缺文件' if r['status'] == 'file-missing' else '⚠️ 缺depot'
-              lines.append(f'- `{r[\"mainAppId\"]}.lua` ({tag})')
-            if len(bad) > 30:
-              lines.append(f'- ...还有 {len(bad)-30} 个')
-
-          payload = json.dumps({'msgtype': 'markdown', 'markdown': {'content': '\n'.join(lines)}}).encode()
-          for url in '${{ inputs.webhook_url }}'.split(','):
-            url = url.strip()
-            if not url: continue
-            try:
-              req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
-              urllib.request.urlopen(req, timeout=5)
-            except Exception as e:
-              print(f'push fail: {e}')
-          "
+          commit_message: "🤖 Lua完整性检查报告 - ${{ github.run_id }}"
+          branch: main
+          file_patterns: |
+            check-report.txt
