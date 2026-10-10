@@ -1,13 +1,13 @@
 {
-  "total": 2,
-  "success": 2,
+  "total": 1,
+  "success": 0,
   "skipped": 0,
   "failed": 0,
-  "noKey": 0,
+  "noKey": 1,
   "freeGame": 0,
   "gotKeyNow": 0,
   "stillNoKey": 0,
-  "mode": "batch",
-  "startTime": "2026-10-10T07:30:40.544Z",
-  "endTime": "2026-10-10T07:30:47.995Z"
+  "mode": "single",
+  "startTime": "2026-10-10T08:37:57.307Z",
+  "endTime": "2026-10-10T08:38:03.310Z"
 }
