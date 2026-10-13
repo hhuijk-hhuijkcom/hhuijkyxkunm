@@ -99,12 +99,5 @@ addappid(3603215,0,"cfbe70a2765fd23fc9e18fc709477bc89b613a9dbe33e963b958f02d5bf5
 addappid(3603216,0,"7bafc467a7b07bf3e3a58d4eb247020eed3fde6a23feaa8cdc1fc51792ab241b")
 addappid(3603217,0,"3a795498fcf75753a482b02d6362056bea7065cd50e1fc58c04b1e57cfe4934e")
 
---无仓库DLC
-addappid(3595231)
-addappid(3602851)
-addappid(3602853)
-addappid(3602972)
-addappid(3602974)
-addappid(3603172)
-addappid(3603175)
-addappid(3602970) -- DLC
+
+
