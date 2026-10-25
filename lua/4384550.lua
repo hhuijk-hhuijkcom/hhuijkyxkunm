@@ -61,8 +61,3 @@ addappid(4384958,0,"27c928204aac38f9dbb02f82053bab227c8c60cc39cefaf2fff8caca9450
 addappid(4384959,0,"daa1d422ee3193215e4e90a5aaaa09eb559bcf9c5ce298bd56211ad776ff4b03")
 addappid(4384961,0,"7fcfed7af7bb1c56ed42fc5750d24d46bc36d208fc36d2a4808e2b084b8b38cc")
 
---无仓库DLC
-addappid(4384551)
-addappid(4384872)
-addappid(4384941)
-addappid(4384960)
