@@ -14,5 +14,4 @@ addappid(2913144,0,"f4c33527c6a4301f74325765ca6f9eaa89700d70683bc63554331f8e0f34
 addappid(2913130) -- 唯一子仓库与DLC ID不同且有密钥
 addappid(2913140) -- 有4个子仓库且都有密钥
 
---无仓库DLC
-addappid(2270602)
+
