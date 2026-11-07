@@ -1,0 +1,7 @@
+--H-huijk
+--主游戏：4540280
+addappid(4540280)
+
+--Depot
+addappid(4540281, 1, "59750a771272d60b57ec713c663ad21b6cfffc4eaa66362cc24c0f67e0cbd6b4") -- Depot 4540281
+addappid(4540282, 1, "d3353156bcfc509311ff3f2c48bb55b3c0cdc1c0c1c5266d25ae009f669e9874") -- Depot 4540282
