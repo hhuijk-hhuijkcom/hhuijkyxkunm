@@ -1,8 +1,8 @@
---H-huijk
---主游戏APPID: 227300
-addappid(227300,0,"4efc6eb3aea74680b954e5b88327ec42ef52984cb390f9dc905aab42a4ae6652") -- 主游戏
+addappid(227300)
+addappid(3851260)
+addappid(4400930)
 
---depotsID
+addappid(227300,0,"4efc6eb3aea74680b954e5b88327ec42ef52984cb390f9dc905aab42a4ae6652")
 addappid(227301,0,"1baf18f6181ad3f9ce663dab07f93ba0f3f5194c82b64785e4cd9f63f3a56b28")
 addappid(227302,0,"edfb6f81d8ec91175145051344fdf788840b2235df88cca912a7602de47f54af")
 addappid(227303,0,"f764a1a949001dd100176a10f3f0b50531c353122118ba0e41bea9eaafb0437f")
@@ -83,7 +83,6 @@ addappid(1209461,0,"b7f8219f8fed4e94ff74b2b35e16da761eea7fd3e9ef505d77a90e4208cd
 addappid(1299530,0,"b2782485e3ba8e8c186d72a545cc77af9a7f535768efd8f7be77f8486ac1e6fa")
 addappid(1415700,0,"4e2401eead464d941dad26b180105b715e5d5116066c00176789f32001b6ad59")
 addappid(1456860,0,"d686ee647b9eb5e7fcd89fd7c82e7b0d201e7ca7402129d7e2de233b8bffcf8e")
-addappid(1536500,0,"5697737424b8d29800546d84491088d03d5c7f0699e919a59c0580262efa735c")
 addappid(1650650,0,"18a31f4193d242da5acc55e09f2959070cfe4a0260c63766f4b90962382a4f26")
 addappid(1704460,0,"38c81d058e71a846f9021921aa37ddd348f9af87fd48670737deef33385cc2f9")
 addappid(1918370,0,"33151097e4f013798a168cca80b589372225a7ac4c36f618632464a0f38629d2")
@@ -108,128 +107,10 @@ addappid(3323350,0,"f052b8b9da688d69eb6b7d9162ddf68fb0caa23dcb84a22cbf5f4125399d
 addappid(3323360,0,"3759b4df13b1da02928e0a58473807f4ddc07f9b1f3513dff867458136e36715")
 addappid(3335300,0,"2a256b173394ae795423eeb99d57400944ea92248ee22379541c4f63b5e5273c")
 addappid(3354860,0,"7ab4299e2db99a337ec4ecbda76dcd0530766e8c3790e8a0419e98f8847fa833")
-addappid(3796990,0,"82353f3f70ff290b2ae7565529c96483c68e360cadb82424d9b418acd5817d2e")
-addappid(3809270,0,"b85ef855a963faed5c19c1215a1d7e0ce75f0c591d75566ccefec6b5704fcd72")
+addappid(3796990,0,"8b87f6be6d14a8d72e0d090adc59d5eda1ebcaefdcf5098d605a6b8f05820f17")
+addappid(3809270,0,"897548d027ca6c19a00678cadadddeb652374c24b8e2946c0394cd6b0104839d")
 addappid(3872920,0,"b8e6dce270a9c23586386a0b33b8815e9ca3dfaf0c0061353832ef483047ea1e")
 addappid(3977520,0,"7aaa899d41f514cf7cb89c490327d090fd2b07fb94d058ead93b4656b71bb09b")
 addappid(4159240,0,"904248995cb6ad9e37ff4571f34b9b6a7f9ad213b63aed13fda017cd070c8bc0")
 addappid(4348650,0,"91bb5110513cc294bb6c83abbc92ad36f742a1c2069803635f24322c383d5617")
 addappid(4400940,0,"614cc960cdc89bcf28d665df7004922e4a3289ed8344485e5086634038925fda")
-
---无仓库DLC
-addappid(2386540)
-addappid(3851260)
-addappid(4400930)
-addappid(5237410)
-addappid(5457490)
-addappid(318501)
-addappid(227310) -- DLC
-addappid(258460) -- DLC
-addappid(266930) -- DLC
-addappid(266931) -- DLC
-addappid(292320) -- DLC
-addappid(297790) -- DLC
-addappid(297791) -- DLC
-addappid(297792) -- DLC
-addappid(297793) -- DLC
-addappid(301180) -- DLC
-addappid(304020) -- DLC
-addappid(304140) -- DLC
-addappid(304210) -- DLC
-addappid(304211) -- DLC
-addappid(304212) -- DLC
-addappid(304213) -- DLC
-addappid(304214) -- DLC
-addappid(318500) -- DLC
-addappid(318510) -- DLC
-addappid(318511) -- DLC
-addappid(318520) -- DLC
-addappid(318521) -- DLC
-addappid(347190) -- DLC
-addappid(347210) -- DLC
-addappid(347211) -- DLC
-addappid(347212) -- DLC
-addappid(347213) -- DLC
-addappid(388470) -- DLC
-addappid(388471) -- DLC
-addappid(388472) -- DLC
-addappid(388474) -- DLC
-addappid(388475) -- DLC
-addappid(388476) -- DLC
-addappid(388477) -- DLC
-addappid(388479) -- DLC
-addappid(461240) -- DLC
-addappid(461241) -- DLC
-addappid(461242) -- DLC
-addappid(461243) -- DLC
-addappid(461244) -- DLC
-addappid(461245) -- DLC
-addappid(461246) -- DLC
-addappid(461247) -- DLC
-addappid(461248) -- DLC
-addappid(461249) -- DLC
-addappid(526950) -- DLC
-addappid(531130) -- DLC
-addappid(531131) -- DLC
-addappid(540720) -- DLC
-addappid(540721) -- DLC
-addappid(558240) -- DLC
-addappid(558241) -- DLC
-addappid(558242) -- DLC
-addappid(558243) -- DLC
-addappid(558244) -- DLC
-addappid(558245) -- DLC
-addappid(876980) -- DLC
-addappid(909640) -- DLC
-addappid(925580) -- DLC
-addappid(925650) -- DLC
-addappid(933610) -- DLC
-addappid(980590) -- DLC
-addappid(980591) -- DLC
-addappid(980592) -- DLC
-addappid(1056760) -- DLC
-addappid(1056761) -- DLC
-addappid(1068290) -- DLC
-addappid(1117140) -- DLC
-addappid(1159030) -- DLC
-addappid(1209460) -- DLC
-addappid(1209461) -- DLC
-addappid(1299530) -- DLC
-addappid(1415700) -- DLC
-addappid(1456860) -- DLC
-addappid(1536500) -- DLC
-addappid(1650650) -- DLC
-addappid(1704460) -- DLC
-addappid(1918370) -- DLC
-addappid(1967640) -- DLC
-addappid(1967650) -- DLC
-addappid(2004210) -- DLC
-addappid(2193220) -- DLC
-addappid(2371170) -- DLC
-addappid(2455690) -- DLC
-addappid(2569750) -- DLC
-addappid(2579670) -- DLC
-addappid(2604420) -- DLC
-addappid(2611740) -- DLC
-addappid(2780800) -- DLC
-addappid(2780810) -- DLC
-addappid(2833100) -- DLC
-addappid(2932420) -- DLC
-addappid(3034940) -- DLC
-addappid(3034950) -- DLC
-addappid(3035040) -- DLC
-addappid(3323350) -- DLC
-addappid(3323360) -- DLC
-addappid(3335300) -- DLC
-addappid(3354860) -- DLC
-addappid(3796990) -- DLC
-addappid(3809270) -- DLC
-addappid(3872920) -- DLC
-addappid(3977520) -- DLC
-addappid(4159240) -- DLC
-addappid(4348650) -- DLC
-addappid(4400940) -- DLC
-
---Token
-addtoken(558240,"7693758108019961089")
-addtoken(388478,"11677420652001697311")
