@@ -194,6 +194,14 @@ async function getAppInfo(appId) {
   return base;
 }
 
+// Steamworks 公共依赖仓（几乎所有游戏都会附带），不能算作游戏本体有密钥
+const SHARED_DEPOT_IDS = new Set([
+  228980, 228981, 228982, 228983, 228984, 228985, 228986, 228987, 228988, 228989,
+  228990, 228991, 228992, 228993, 228994, 228995, 228996, 228997, 228998, 228999,
+]);
+function isSharedDepot(id) {
+  return SHARED_DEPOT_IDS.has(Number(id));
+}
 function generateLuaContent(appId, depotIds, dlcList, dlcDepotMap) {
   const appIdNum = parseInt(appId);
   let lua = `--H-huijk\n`;
@@ -357,9 +365,18 @@ async function processAppId(appId) {
     await new Promise(r => setTimeout(r, 300));
   }
   // 密钥检查
+  // 修复：228989/228990 等公共依赖仓、以及 DLC 的子仓库都可能带 key，
+  // 但它们不代表主游戏本体有密钥，不能作为生成 lua 的依据。
   const hasMainKey = !!depotKeys[appIdNum];
-  const depotsWithKey = depotIds.filter(did => depotKeys[did]);
-  const hasAnyKey = hasMainKey || depotsWithKey.length > 0;
+  const keyedDepots = depotIds.filter(did => depotKeys[did]);
+  const dlcDepotIds = new Set(Object.values(dlcDepotMap).flat().map(Number));
+  const baseDepotsWithKey = keyedDepots.filter(
+    did => !isSharedDepot(did) && !dlcDepotIds.has(Number(did))
+  );
+  const hasAnyKey = hasMainKey || baseDepotsWithKey.length > 0;
+  if (!hasAnyKey && keyedDepots.length > 0) {
+    console.log(`  ⚠️ 仅命中公共/DLC 仓库密钥 (${keyedDepots.join(', ')})，不计为主游戏密钥`);
+  }
   const isComingSoon = appData && appData.release_date && appData.release_date.coming_soon === true;
   const free = appData ? (!isComingSoon && (!appData.price_overview || appData.price_overview.final === 0)) : false;
   if (isComingSoon) {
